@@ -4,7 +4,10 @@ import os
 
 TOKEN = os.getenv("TOKEN")
 
+# 🔥 FIX: เปิด message content intent
 intents = discord.Intents.default()
+intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
@@ -33,6 +36,7 @@ class AdminControlView(discord.ui.View):
 # ===== SETUP =====
 @bot.event
 async def setup_hook():
+    # 🔥 ทำให้ปุ่มไม่หายหลังรีสตาร์ท
     bot.add_view(AdminControlView())
 
 
