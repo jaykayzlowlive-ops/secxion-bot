@@ -8,7 +8,6 @@ ADMIN_DASHBOARD_ID = 1501167503185805403
 LOG_CHANNEL_ID = 1496076202509598720
 CUSTOMER_ROLE_ID = 1488092810442706994
 
-# ===== intents =====
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -21,44 +20,41 @@ PRODUCTS = {
         "name": "SETTING V1",
         "price": "79 THB",
         "emoji": "🔥",
-        "item": "ลิงก์ดาวน์โหลด V1: https://example.com/v1"
+        "item": "https://example.com/v1"
     },
     "v2": {
         "name": "KINGWEAPON V2",
         "price": "99 THB",
         "emoji": "👑",
-        "item": "ลิงก์ดาวน์โหลด V2: https://example.com/v2"
+        "item": "https://example.com/v2"
     },
     "pro": {
         "name": "FPS BOOSTER PRO",
         "price": "45 THB",
         "emoji": "⚡",
-        "item": "ไฟล์โปร: https://example.com/pro"
+        "item": "https://example.com/pro"
     }
 }
 
-# ===== PAYMENT =====
 PAYMENT_INFO = {
     "bank_name": "กรุงไทย",
     "bank_number": "665-2-19754-5",
-    "wallet_number": "065-529-2340",
-    "account_name": "ปุณณวิช"
+    "wallet_number": "065-529-2340"
 }
 
+# กันกดซ้ำ
+paid_users = set()
 
 # ===== PAYMENT VIEW =====
 class PaymentView(discord.ui.View):
     def __init__(self, product_id):
         super().__init__(timeout=None)
-        self.data = PRODUCTS.get(product_id)
+        self.data = PRODUCTS[product_id]
 
-    @discord.ui.button(
-        label="ดูช่องทางชำระเงิน",
-        style=discord.ButtonStyle.secondary,
-        custom_id="pay_info"
-    )
+    @discord.ui.button(label="💳 ช่องทางชำระเงิน", style=discord.ButtonStyle.secondary, custom_id="pay_info")
     async def payinfo(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="📱 ชำระเงิน", color=0x00ffff)
+
+        embed = discord.Embed(title="📱 วิธีชำระเงิน", color=0x00ffff)
         embed.description = (
             f"{self.data['name']} - {self.data['price']}\n\n"
             f"{PAYMENT_INFO['bank_name']} : {PAYMENT_INFO['bank_number']}\n"
@@ -70,65 +66,62 @@ class PaymentView(discord.ui.View):
         if os.path.exists(qr_path):
             file = discord.File(qr_path, filename="qr.png")
             embed.set_image(url="attachment://qr.png")
-            await interaction.response.send_message(file=file, embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, file=file, ephemeral=True)
         else:
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(
-        label="แจ้งโอนแล้ว",
-        style=discord.ButtonStyle.success,
-        custom_id="confirm_pay"
-    )
+    @discord.ui.button(label="✅ แจ้งโอนแล้ว", style=discord.ButtonStyle.success, custom_id="confirm_pay")
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
 
-        # 🔥 กันกดซ้ำ
-        button.disabled = True
+        # 🔥 ตอบก่อน กัน fail
+        await interaction.response.defer(ephemeral=True)
+
+        if interaction.user.id in paid_users:
+            return await interaction.followup.send("คุณกดไปแล้ว ❌", ephemeral=True)
+
+        paid_users.add(interaction.user.id)
+
+        # ===== disable ปุ่ม =====
+        for item in self.children:
+            item.disabled = True
         await interaction.message.edit(view=self)
 
         # ===== LOG =====
-        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
-        if log_channel:
-            await log_channel.send(
-                f"💸 {interaction.user.mention} แจ้งโอน {self.data['name']}"
-            )
+        log = interaction.guild.get_channel(LOG_CHANNEL_ID)
+        if log:
+            embed = discord.Embed(title="💸 แจ้งโอน", color=0x00ff00)
+            embed.add_field(name="User", value=interaction.user.mention)
+            embed.add_field(name="สินค้า", value=self.data['name'])
+            await log.send(embed=embed)
 
-        # ===== ให้ ROLE =====
+        # ===== ROLE =====
         role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
         if role:
             await interaction.user.add_roles(role)
 
-        # ===== ส่งของ (DM) =====
+        # ===== DM =====
         try:
-            await interaction.user.send(
-                f"🎁 สินค้าของคุณ:\n{self.data['item']}"
-            )
+            await interaction.user.send(f"🎁 สินค้าของคุณ:\n{self.data['item']}")
         except:
-            pass
+            await interaction.channel.send(f"{interaction.user.mention} เปิด DM ไม่ได้")
 
-        await interaction.response.send_message("สำเร็จแล้ว ✅", ephemeral=True)
+        await interaction.followup.send("🎉 สำเร็จ! ส่งของให้แล้ว", ephemeral=True)
 
 
-# ===== STOREFRONT =====
+# ===== STORE =====
 class StorefrontView(discord.ui.View):
     def __init__(self, product_id):
         super().__init__(timeout=None)
         self.product_id = product_id
 
-    @discord.ui.button(
-        label="ซื้อ",
-        style=discord.ButtonStyle.success,
-        custom_id="buy_btn"
-    )
+    @discord.ui.button(label="🛒 ซื้อ", style=discord.ButtonStyle.success, custom_id="buy_btn")
     async def buy(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(
-            view=PaymentView(self.product_id),
-            ephemeral=True
-        )
+        await interaction.response.send_message(view=PaymentView(self.product_id), ephemeral=True)
 
 
 # ===== MODAL =====
-class ChannelIDModal(discord.ui.Modal, title='ใส่ ID ห้อง'):
-    channel_id_input = discord.ui.TextInput(label='Channel ID')
+class ChannelIDModal(discord.ui.Modal, title="ใส่ ID ห้อง"):
+    channel_id_input = discord.ui.TextInput(label="Channel ID")
 
     def __init__(self, product_id):
         super().__init__()
@@ -141,13 +134,12 @@ class ChannelIDModal(discord.ui.Modal, title='ใส่ ID ห้อง'):
 
             embed = discord.Embed(
                 title=f"{data['emoji']} {data['name']}",
-                description=f"{data['price']}",
+                description=data['price'],
                 color=0x5865F2
             )
 
             await channel.send(embed=embed, view=StorefrontView(self.product_id))
-            await interaction.response.send_message("ส่งสินค้าแล้ว ✅", ephemeral=True)
-
+            await interaction.response.send_message("ส่งแล้ว ✅", ephemeral=True)
         except:
             await interaction.response.send_message("ID ผิด ❌", ephemeral=True)
 
@@ -160,18 +152,16 @@ class AdminControlView(discord.ui.View):
         for p_id in PRODUCTS:
             self.add_item(discord.ui.Button(
                 label=PRODUCTS[p_id]['name'],
-                style=discord.ButtonStyle.primary,
                 custom_id=f"admin_{p_id}"
             ))
 
     async def interaction_check(self, interaction: discord.Interaction):
-        custom_id = interaction.data.get("custom_id")
+        cid = interaction.data.get("custom_id")
 
-        if custom_id.startswith("admin_"):
-            p_id = custom_id.replace("admin_", "")
+        if cid.startswith("admin_"):
+            p_id = cid.replace("admin_", "")
             await interaction.response.send_modal(ChannelIDModal(p_id))
             return False
-
         return True
 
 
@@ -183,22 +173,19 @@ class Bot(commands.Bot):
     async def setup_hook(self):
         self.add_view(AdminControlView())
 
-
 bot = Bot()
 
 
-# ===== COMMAND =====
 @bot.command()
 async def dashboard(ctx):
     if ctx.channel.id != ADMIN_DASHBOARD_ID:
         return
-    await ctx.send("CONTROL PANEL", view=AdminControlView())
+    await ctx.send("🎛 CONTROL PANEL", view=AdminControlView())
 
 
-# ===== READY =====
 @bot.event
 async def on_ready():
-    print("ONLINE")
+    print("ONLINE 🚀")
 
 
 bot.run(TOKEN)
