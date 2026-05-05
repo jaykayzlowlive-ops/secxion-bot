@@ -3,19 +3,41 @@ from discord.ext import commands
 import os
 
 TOKEN = os.getenv("TOKEN")
-ADMIN_DASHBOARD_ID = 1501167503185805403
 
-# 🔥 intents
+ADMIN_DASHBOARD_ID = 1501167503185805403
+LOG_CHANNEL_ID = 1496076202509598720
+CUSTOMER_ROLE_ID = 1488092810442706994
+
+# ===== intents =====
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
-# ===== DATA =====
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ===== PRODUCTS =====
 PRODUCTS = {
-    "v1": {"name": "SETTING V1", "price": "79 THB", "emoji": "🔥"},
-    "v2": {"name": "KINGWEAPON V2", "price": "99 THB", "emoji": "👑"},
-    "pro": {"name": "FPS BOOSTER PRO", "price": "45 THB", "emoji": "⚡"}
+    "v1": {
+        "name": "SETTING V1",
+        "price": "79 THB",
+        "emoji": "🔥",
+        "item": "ลิงก์ดาวน์โหลด V1: https://example.com/v1"
+    },
+    "v2": {
+        "name": "KINGWEAPON V2",
+        "price": "99 THB",
+        "emoji": "👑",
+        "item": "ลิงก์ดาวน์โหลด V2: https://example.com/v2"
+    },
+    "pro": {
+        "name": "FPS BOOSTER PRO",
+        "price": "45 THB",
+        "emoji": "⚡",
+        "item": "ไฟล์โปร: https://example.com/pro"
+    }
 }
 
+# ===== PAYMENT =====
 PAYMENT_INFO = {
     "bank_name": "กรุงไทย",
     "bank_number": "665-2-19754-5",
@@ -35,7 +57,7 @@ class PaymentView(discord.ui.View):
         style=discord.ButtonStyle.secondary,
         custom_id="pay_info"
     )
-    async def qrcode(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def payinfo(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="📱 ชำระเงิน", color=0x00ffff)
         embed.description = (
             f"{self.data['name']} - {self.data['price']}\n\n"
@@ -58,10 +80,32 @@ class PaymentView(discord.ui.View):
         custom_id="confirm_pay"
     )
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.channel.send(
-            f"🔔 {interaction.user.mention} แจ้งโอน {self.data['name']}"
-        )
-        await interaction.response.send_message("แจ้งแล้ว ✅", ephemeral=True)
+
+        # 🔥 กันกดซ้ำ
+        button.disabled = True
+        await interaction.message.edit(view=self)
+
+        # ===== LOG =====
+        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            await log_channel.send(
+                f"💸 {interaction.user.mention} แจ้งโอน {self.data['name']}"
+            )
+
+        # ===== ให้ ROLE =====
+        role = interaction.guild.get_role(CUSTOMER_ROLE_ID)
+        if role:
+            await interaction.user.add_roles(role)
+
+        # ===== ส่งของ (DM) =====
+        try:
+            await interaction.user.send(
+                f"🎁 สินค้าของคุณ:\n{self.data['item']}"
+            )
+        except:
+            pass
+
+        await interaction.response.send_message("สำเร็จแล้ว ✅", ephemeral=True)
 
 
 # ===== STOREFRONT =====
@@ -70,13 +114,11 @@ class StorefrontView(discord.ui.View):
         super().__init__(timeout=None)
         self.product_id = product_id
 
-        self.add_item(discord.ui.Button(
-            label="ซื้อ",
-            style=discord.ButtonStyle.success,
-            custom_id=f"buy_{product_id}"
-        ))
-
-    @discord.ui.button(label="ซื้อ", style=discord.ButtonStyle.success, custom_id="buy_btn")
+    @discord.ui.button(
+        label="ซื้อ",
+        style=discord.ButtonStyle.success,
+        custom_id="buy_btn"
+    )
     async def buy(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message(
             view=PaymentView(self.product_id),
@@ -121,10 +163,6 @@ class AdminControlView(discord.ui.View):
                 style=discord.ButtonStyle.primary,
                 custom_id=f"admin_{p_id}"
             ))
-
-    @discord.ui.button(label="dummy", custom_id="dummy", style=discord.ButtonStyle.secondary)
-    async def dummy(self, interaction: discord.Interaction, button: discord.ui.Button):
-        pass
 
     async def interaction_check(self, interaction: discord.Interaction):
         custom_id = interaction.data.get("custom_id")
